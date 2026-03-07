@@ -77,9 +77,11 @@ graph TD
 │       ├── alertmanager-config.yaml   # Alertmanager Telegram 設定
 │       └── servicemonitor.yaml        # Prometheus 監控目標設定
 ├── scripts/
+│   ├── daily-rebuild.sh              # 每日重建：terraform apply → 安裝元件 → git push → 等待就緒
+│   ├── daily-teardown.sh             # 每日拆除：刪除 Ingress → 等待 ALB 消失 → terraform destroy
 │   ├── setup-terraform-backend.sh    # 建立 S3 + DynamoDB（只需執行一次）
 │   ├── setup-ecr.sh                  # 建立 ECR repository（只需執行一次）
-│   ├── setup-monitoring.sh           # 安裝監控 stack（模板版）
+│   ├── setup-monitoring.sh           # 安裝監控 stack（互動式輸入機密）
 │   └── test-rollback-alert.sh        # 測試 helm rollback + 告警
 └── terraform/eks/            # EKS + VPC + IAM 基礎設施
 ```
@@ -143,34 +145,21 @@ bash scripts/setup-terraform-backend.sh
 bash scripts/setup-ecr.sh
 ```
 
-### 每次重建 EKS 後的執行順序
+### 每次重建 EKS
 
 ```bash
-# Step 1：建立 AWS 基礎設施
-cd terraform/eks
-terraform init
-terraform apply
-
-# Step 2：連線到 cluster
-aws eks update-kubeconfig --region ap-northeast-1 --name devops-eks
-
-# Step 3：建立 ALB Controller ServiceAccount（IRSA）
-kubectl apply -f k8s/setup/ServiceAccount.yaml
-
-# Step 4：安裝 ALB Controller
-helm upgrade --install aws-load-balancer-controller \
-  eks/aws-load-balancer-controller \
-  -n kube-system \
-  -f helm/aws-load-balancer-controller/values.yaml
-
-# Step 5：安裝監控 Stack + 建立 Secrets
-bash scripts/setup-monitoring.local.sh
-
-# Step 6：部署應用（擇一）
-git push                    # 觸發 CI/CD
-# 或
-helm upgrade --install my-nginx ./helm/nginx-chart
+bash scripts/daily-rebuild.sh
 ```
+
+包含：terraform apply → 等待 nodes ready → ALB Controller → Monitoring stack → git push 觸發 CI/CD → 等待 ALB active → 等待 HTTP 200 → 開啟瀏覽器
+
+### 每次拆除 EKS
+
+```bash
+bash scripts/daily-teardown.sh
+```
+
+包含：刪除所有 Ingress（觸發 ALB 刪除）→ 等待 ALB 消失 → terraform destroy
 
 ### 依賴順序說明
 
