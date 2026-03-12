@@ -77,3 +77,16 @@ jobs:
             --namespace default \
             --set image.repository=${{ needs.ci.outputs.ecr-registry }}/$REPO_NAME \
             --set image.tag=${{ needs.ci.outputs.image-tag }}
+
+      - name: Notify Telegram
+        if: always()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            MSG="✅ Deploy 成功%0A倉庫：${{ github.repository }}%0A分支：${{ github.ref_name }}%0ACommit：${{ github.sha }}%0A執行者：${{ github.actor }}"
+          else
+            MSG="❌ Deploy 失敗%0A倉庫：${{ github.repository }}%0A分支：${{ github.ref_name }}%0ACommit：${{ github.sha }}%0A執行者：${{ github.actor }}"
+          fi
+          curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${MSG}"
